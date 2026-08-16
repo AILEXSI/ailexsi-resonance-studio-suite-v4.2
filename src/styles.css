@@ -174,22 +174,38 @@ html, body, #root { height: 100%; overflow: hidden; }
 .timeline-label.active { outline: 1px solid #6af; outline-offset: -1px; }
 .timeline-label.is-muted { opacity: 0.45; }
 .timeline-label.is-solo { background: rgba(245, 166, 35, 0.12); }
-.track-mix { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.track-mix { display: flex; align-items: center; gap: 3px; flex-shrink: 0; }
 .track-mix-btn {
-  width: 18px; height: 18px; padding: 0; border-radius: 3px;
-  border: 1px solid #3a4250; background: #1a1e24; color: #8b93a1;
-  font-size: 9px; font-weight: 700; cursor: pointer; line-height: 16px;
+  min-width: 20px; height: 20px; padding: 0 4px; border-radius: 4px;
+  border: 1px solid #4a5360; background: #12161c; color: #c5cdd8;
+  font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+  cursor: pointer; line-height: 18px;
 }
-.track-mix-btn.ai { width: auto; padding: 0 4px; color: #c9b6ff; border-color: #5a4a8a; }
-.track-mix-btn.mute.on { background: #5a1e28; color: #ffb4b4; border-color: #a44; }
-.track-mix-btn.solo.on { background: #5a4314; color: #ffd27a; border-color: #c90; }
+.track-mix-btn:hover { filter: brightness(1.15); }
+.track-mix-btn.ai { color: #d4c6ff; border-color: #6a5aa0; background: #1a1628; }
+.track-mix-btn.mute.on {
+  background: #d64545; color: #fff; border-color: #ff8a8a; font-weight: 800;
+  box-shadow: 0 0 0 1px #d64545;
+}
+.track-mix-btn.solo.on {
+  background: #f5a623; color: #1a1204; border-color: #ffd27a; font-weight: 800;
+  box-shadow: 0 0 0 1px #f5a623;
+}
 .track-lane.is-muted { opacity: 0.35; }
 .track-lane.is-solo { box-shadow: inset 0 0 0 1px rgba(245, 166, 35, 0.35); }
-.clip.ai-visualizer { background: #5b4a9b; }
+.clip.ai-visualizer { background: #2a2048; padding: 0; }
 .clip.ai-arrangement { background: #6d4aa5; }
-.viz-overlay {
+.clip-viz-canvas {
   position: absolute; inset: 0; width: 100%; height: 100%;
-  pointer-events: none; z-index: 4;
+  pointer-events: none; display: block;
+}
+.clip.ai-visualizer .clip-label {
+  position: relative; z-index: 1; padding: 2px 6px;
+  text-shadow: 0 1px 2px #000;
+}
+.viz-main {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  display: block; background: #050608;
 }
 
 .timeline-canvas {
