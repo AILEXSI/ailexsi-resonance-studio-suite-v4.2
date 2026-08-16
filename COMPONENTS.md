@@ -73,11 +73,15 @@ Supporting native layer:
 - Desktop: `npm run tauri:dev`
 - Cut = V, C free, logo Suite V4.2 / 4.2.0
 
+**Host AI lanes (this repo)**
+
+- AI Visualizer track — beat-sync overlay from project audio / beat grid
+- AI Arrangement track — proposal from existing V1/V2 clips; Accept required
+
 **Still external / next**
 
 - Sensorics (Analyser) into the host
-- One AI video track (Regisseur → human accept)
-- Visualz scenes
+- More Visualz scenes
 - Decoder sidecar beyond the current ffmpeg helper
 
 ---

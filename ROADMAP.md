@@ -19,10 +19,15 @@ Inherited from that baseline: multi-track V1/V2 + A1/A2, Cut = V / C free, WebCo
 - Still-image paint in the exporter
 - Cancel aborts the WebCodecs encode (`AbortSignal`)
 
+- Two dedicated AI video lanes: **AI Visualizer** (top) and **AI Arrangement**
+- Mute + Solo on every track (Mute = preview+export, Solo = preview)
+- Visualizer: beat-sync overlay (preview + export when the lane is not muted)
+- Arrangement: Régisseur proposal from existing videos — human Accept / Reject
+
 ## Next (host is ready)
 
 1. **Sensorics** — real feature extraction (beats, energy, scenes) into the host
-2. **AI video track** — Regisseur proposal → human accept → new VIDEO lane
+2. Stronger visualizer styles / arrangement heuristics
 3. Stronger pre-export hydration (no `missing:` / dead blob mid-encode)
 4. Optional full removal of the MediaRecorder branch (already isolated: never a success after WebCodecs fail)
 5. Waveform / beats polish
