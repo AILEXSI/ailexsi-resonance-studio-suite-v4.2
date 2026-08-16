@@ -75,7 +75,7 @@ Supporting native layer:
 
 **Host AI lanes (this repo)**
 
-- AI Visualizer track — beat-sync overlay from project audio / beat grid
+- AI Visualizer track — Visualz engine (resonance-wave, spectrum-bars, pulse-orb, …) driven by project audio / beat grid; Main Output fallback only
 - AI Arrangement track — proposal from existing V1/V2 clips; Accept required
 
 **Still external / next**

@@ -12,7 +12,13 @@ import {
 } from "./core/models";
 import { generateProposal, applyProposal, rejectProposal } from "./core/ai-command";
 import { isTrackActiveForPreview, toggleTrackMute, toggleTrackSolo } from "./core/track-mix";
-import { collectBeatTimesMs, drawVisualizerFrame, visualizerEnergyAt } from "./core/ai-visualizer";
+import { collectBeatTimesMs } from "./core/ai-visualizer";
+import {
+  DEFAULT_VIZ_SCENE,
+  featuresFromAnalyser,
+  listVisualizerScenes,
+  renderVisualizerScene,
+} from "./core/visualz";
 import { proposeArrangement } from "./core/ai-arrangement";
 import { loadProject, saveProject } from "./core/project-store";
 import {
@@ -506,9 +512,13 @@ export function App() {
     !activeVideoAsset
   );
 
+  const visualizerSceneId =
+    visualizerTrack?.visualizerSceneId || DEFAULT_VIZ_SCENE;
+
   useEffect(() => {
     const beats = collectBeatTimesMs(project);
-    const paint = (canvas: HTMLCanvasElement | null, visible: boolean) => {
+    let last = performance.now();
+    const paint = (canvas: HTMLCanvasElement | null, visible: boolean, dt: number) => {
       if (!canvas) return;
       const parent = canvas.parentElement;
       if (!parent) return;
@@ -519,15 +529,24 @@ export function App() {
       if (canvas.height !== h) canvas.height = h;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (!visible) return;
-      const energy = visualizerEnergyAt(project.playheadMs, beats, meterLevel);
-      drawVisualizerFrame(ctx, canvas.width, canvas.height, project.playheadMs, energy, beats);
+      if (!visible) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+      }
+      const features = featuresFromAnalyser(
+        analyserRef.current,
+        project.playheadMs,
+        beats,
+        meterLevel,
+      );
+      renderVisualizerScene(ctx, canvas.width, canvas.height, visualizerSceneId, features, dt);
     };
     let raf = 0;
-    const tick = () => {
-      paint(vizClipCanvasRef.current, visualizerPreviewOn);
-      paint(vizCanvasRef.current, visualizerAsMainOutput);
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      paint(vizClipCanvasRef.current, visualizerPreviewOn, dt);
+      paint(vizCanvasRef.current, visualizerAsMainOutput, dt);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -535,6 +554,7 @@ export function App() {
   }, [
     visualizerPreviewOn,
     visualizerAsMainOutput,
+    visualizerSceneId,
     project.playheadMs,
     project.durationMs,
     project.markers,
@@ -1655,7 +1675,7 @@ export function App() {
         trackId: viz.id,
         range: { startMs: 0, endMs },
         label: "Beat visualizer",
-        metadata: { role: "ai-visualizer", style: "pulse-bars" },
+        metadata: { role: "ai-visualizer", sceneId: viz.visualizerSceneId || DEFAULT_VIZ_SCENE },
       };
       return {
         ...p,
@@ -1666,6 +1686,26 @@ export function App() {
     });
     flash("Visualizer layer placed — Mute or Undo to reverse");
   }, [project]);
+
+  const setVisualizerScene = useCallback((sceneId: string) => {
+    setProject((p) => ({
+      ...p,
+      tracks: p.tracks.map((t) =>
+        t.role === "ai-visualizer"
+          ? {
+              ...t,
+              visualizerSceneId: sceneId,
+              clips: t.clips.map((c) => ({
+                ...c,
+                metadata: { ...c.metadata, sceneId },
+                label: listVisualizerScenes().find((s) => s.id === sceneId)?.name || c.label,
+              })),
+            }
+          : t,
+      ),
+      updatedAt: new Date().toISOString(),
+    }));
+  }, []);
 
   const proposeArrangementTrack = useCallback(() => {
     const proposal = proposeArrangement(project);
@@ -2258,17 +2298,35 @@ export function App() {
                     S
                   </button>
                   {track.role === "ai-visualizer" && (
-                    <button
-                      type="button"
-                      className="track-mix-btn ai"
-                      title="Place beat-sync visualizer layer (undoable)"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        placeVisualizerLayer();
-                      }}
-                    >
-                      Viz
-                    </button>
+                    <>
+                      <select
+                        className="viz-scene-select"
+                        title="Visualizer scene"
+                        value={track.visualizerSceneId || DEFAULT_VIZ_SCENE}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          setVisualizerScene(e.target.value);
+                        }}
+                      >
+                        {listVisualizerScenes().map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="track-mix-btn ai"
+                        title="Place beat-sync visualizer layer (undoable)"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          placeVisualizerLayer();
+                        }}
+                      >
+                        Viz
+                      </button>
+                    </>
                   )}
                   {track.role === "ai-arrangement" && (
                     <button
