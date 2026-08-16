@@ -1,5 +1,10 @@
 const videoCache = new Map<string, HTMLVideoElement>();
 const audioCache = new Map<string, AudioBuffer>();
+const presentedAt = new WeakMap<HTMLVideoElement, number>();
+
+const FRAME_EPS = 1 / 120;
+const SEEK_TIMEOUT_MS = 1500;
+const PRESENT_TIMEOUT_MS = 80;
 
 export function isPlayableSource(url: string | undefined): boolean {
   if (!url) return false;
@@ -44,21 +49,59 @@ export async function loadVideo(src: string): Promise<HTMLVideoElement> {
   return el;
 }
 
+/** Seek and wait until a frame is actually presented. Never treat timeout as a successful seek. */
 export async function seekVideo(el: HTMLVideoElement, timeSec: number) {
-  const cap = Number.isFinite(el.duration) ? el.duration : timeSec;
+  const cap = Number.isFinite(el.duration) && el.duration > 0 ? el.duration : timeSec;
   const t = Math.max(0, Math.min(cap, timeSec));
-  if (Math.abs(el.currentTime - t) < 1 / 90) return;
-  el.currentTime = t;
-  await new Promise<void>((resolve) => {
+  const lastPresented = presentedAt.get(el);
+  if (
+    lastPresented !== undefined &&
+    Math.abs(lastPresented - t) < FRAME_EPS &&
+    el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+  ) {
+    return;
+  }
+
+  if (Math.abs(el.currentTime - t) >= FRAME_EPS || el.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        el.removeEventListener("seeked", done);
+        el.removeEventListener("error", done);
+        window.clearTimeout(timer);
+        resolve();
+      };
+      el.addEventListener("seeked", done);
+      el.addEventListener("error", done);
+      const timer = window.setTimeout(done, SEEK_TIMEOUT_MS);
+      el.currentTime = t;
+    });
+  }
+
+  await waitForPresentedFrame(el);
+  presentedAt.set(el, t);
+}
+
+function waitForPresentedFrame(el: HTMLVideoElement): Promise<void> {
+  return new Promise((resolve) => {
     let settled = false;
     const done = () => {
       if (settled) return;
       settled = true;
-      el.removeEventListener("seeked", done);
       resolve();
     };
-    el.addEventListener("seeked", done);
-    window.setTimeout(done, 70);
+    const rvfc = el.requestVideoFrameCallback?.bind(el);
+    if (typeof rvfc === "function") {
+      const id = rvfc(() => done());
+      window.setTimeout(() => {
+        try { el.cancelVideoFrameCallback?.(id); } catch { /* */ }
+        done();
+      }, PRESENT_TIMEOUT_MS);
+      return;
+    }
+    requestAnimationFrame(() => requestAnimationFrame(() => done()));
   });
 }
 

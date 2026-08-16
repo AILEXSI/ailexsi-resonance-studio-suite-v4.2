@@ -8,7 +8,9 @@ import {
   CanvasSource,
   Mp4OutputFormat,
   Output,
+  QUALITY_HIGH,
   QUALITY_MEDIUM,
+  Quality,
   canEncodeAudio,
   canEncodeVideo,
 } from "mediabunny";
@@ -64,6 +66,30 @@ export async function probeAac(): Promise<AacConfig | null> {
     }
   }
   return null;
+}
+
+function parseBitrateBps(raw?: string): number | null {
+  if (!raw) return null;
+  const m = String(raw).trim().match(/^(\d+(?:\.\d+)?)\s*([kKmMgG])?$/);
+  if (!m) return null;
+  const n = Number(m[1]);
+  const u = (m[2] || "").toUpperCase();
+  const mul = u === "G" ? 1e9 : u === "M" ? 1e6 : u === "K" ? 1e3 : 1;
+  const bps = n * mul;
+  if (!Number.isFinite(bps) || bps < 100_000 || bps > 80_000_000) return null;
+  return Math.round(bps);
+}
+
+function resolveVideoQuality(bitrate?: string) {
+  const bps = parseBitrateBps(bitrate);
+  if (bps) {
+    try {
+      return new Quality({ bitrate: bps });
+    } catch {
+      /* QUALITY_HIGH */
+    }
+  }
+  return QUALITY_HIGH;
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
@@ -132,8 +158,9 @@ async function renderMp4(
 
   const videoSource = new CanvasSource(canvas, {
     codec: "avc",
-    quality: QUALITY_MEDIUM,
-    keyFrameInterval: 2,
+    quality: resolveVideoQuality(job.options.videoBitrate),
+    keyFrameInterval: 0.5,
+    latencyMode: "quality",
     sizeChangeBehavior: "contain",
   });
   output.addVideoTrack(videoSource, { frameRate: plan.fps });
@@ -238,9 +265,7 @@ async function paintFrame(
     const el = lastClipId === clip.id && lastEl ? lastEl : await loadVideo(clip.sourcePath);
     const srcIn = clip.sourceInMs ?? 0;
     const targetSec = (srcIn + (tMs - clip.startMs)) / 1000;
-    const sequential = lastClipId === clip.id && Math.abs(el.currentTime - targetSec) < 0.08;
-    if (!sequential) await seekVideo(el, targetSec);
-    else if (Math.abs(el.currentTime - targetSec) > 1 / 90) el.currentTime = targetSec;
+    await seekVideo(el, targetSec);
     if (el.videoWidth < 2) return el;
     const scale = Math.min(canvas.width / el.videoWidth, canvas.height / el.videoHeight);
     const w = el.videoWidth * scale;
