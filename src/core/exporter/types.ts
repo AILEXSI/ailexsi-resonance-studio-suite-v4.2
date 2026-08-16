@@ -21,7 +21,7 @@ export interface ExportClip {
   sourcePath: string;
   sourceInMs?: number;
   sourceOutMs?: number;
-  sourceKind?: "video" | "audio" | "image";
+  sourceKind?: "video" | "audio" | "image" | "visualizer";
   label?: string;
 }
 
@@ -39,6 +39,8 @@ export interface ExportJob {
     tracks: ExportTrack[];
   };
   options: RenderOptions;
+  /** Live overlay when the AI Visualizer track is not muted. */
+  visualizer?: { enabled: boolean; beatsMs: number[] };
 }
 
 export interface ExportProgress {

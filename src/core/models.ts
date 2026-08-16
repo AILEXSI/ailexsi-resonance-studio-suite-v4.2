@@ -11,6 +11,12 @@ export type TrackKind =
   | "BEATS"
   | "AI_EVENTS";
 
+/** Dedicated AI video lanes. User V1/V2 have role undefined / "user". */
+export type TrackRole = "user" | "ai-visualizer" | "ai-arrangement";
+
+export const AI_VISUALIZER_NAME = "AI Visualizer";
+export const AI_ARRANGEMENT_NAME = "AI Arrangement";
+
 export interface TimeRange {
   startMs: number;
   endMs: number;
@@ -33,6 +39,8 @@ export interface Track {
   clips: Clip[];
   locked?: boolean;
   muted?: boolean;
+  soloed?: boolean;
+  role?: TrackRole;
   height?: number;
 }
 
@@ -78,6 +86,7 @@ export interface ProjectEditProposal {
       | "add_marker"
       | "sync_to_beat"
       | "add_clip"
+      | "replace_track_clips"
       | "set_playhead";
     targetId?: string;
     payload: Record<string, unknown>;
@@ -118,8 +127,22 @@ export function createEmptyProject(name = "Untitled Resonance"): Project {
     updatedAt: now,
     mediaAssets: [],
     tracks: [
-      { id: crypto.randomUUID(), kind: "VIDEO", name: "V1", clips: [] },
-      { id: crypto.randomUUID(), kind: "VIDEO", name: "V2", clips: [] },
+      {
+        id: crypto.randomUUID(),
+        kind: "VIDEO",
+        name: AI_VISUALIZER_NAME,
+        role: "ai-visualizer",
+        clips: [],
+      },
+      {
+        id: crypto.randomUUID(),
+        kind: "VIDEO",
+        name: AI_ARRANGEMENT_NAME,
+        role: "ai-arrangement",
+        clips: [],
+      },
+      { id: crypto.randomUUID(), kind: "VIDEO", name: "V1", role: "user", clips: [] },
+      { id: crypto.randomUUID(), kind: "VIDEO", name: "V2", role: "user", clips: [] },
       { id: crypto.randomUUID(), kind: "AUDIO", name: "A1", clips: [] },
       { id: crypto.randomUUID(), kind: "AUDIO", name: "A2", clips: [] },
       { id: crypto.randomUUID(), kind: "BEATS", name: "Beats", clips: [] },
@@ -134,11 +157,68 @@ export function createEmptyProject(name = "Untitled Resonance"): Project {
   };
 }
 
+export function isAiVideoRole(role: TrackRole | undefined): role is "ai-visualizer" | "ai-arrangement" {
+  return role === "ai-visualizer" || role === "ai-arrangement";
+}
+
+export function isUserVideoTrack(track: Track): boolean {
+  return track.kind === "VIDEO" && !isAiVideoRole(track.role);
+}
+
+/** Insert the two fixed AI video lanes and keep Visualizer above Arrangement. */
+export function ensureAiVideoTracks(project: Project): Project {
+  let tracks = project.tracks.map((t) => {
+    if (t.kind === "VIDEO" && !t.role) {
+      if (t.name === AI_VISUALIZER_NAME) return { ...t, role: "ai-visualizer" as const };
+      if (t.name === AI_ARRANGEMENT_NAME) return { ...t, role: "ai-arrangement" as const };
+      return { ...t, role: "user" as const };
+    }
+    return t;
+  });
+
+  const hasViz = tracks.some((t) => t.role === "ai-visualizer");
+  const hasArr = tracks.some((t) => t.role === "ai-arrangement");
+  if (!hasViz) {
+    tracks = [
+      {
+        id: crypto.randomUUID(),
+        kind: "VIDEO",
+        name: AI_VISUALIZER_NAME,
+        role: "ai-visualizer",
+        clips: [],
+      },
+      ...tracks,
+    ];
+  }
+  if (!hasArr) {
+    const vizAt = tracks.findIndex((t) => t.role === "ai-visualizer");
+    const arr: Track = {
+      id: crypto.randomUUID(),
+      kind: "VIDEO",
+      name: AI_ARRANGEMENT_NAME,
+      role: "ai-arrangement",
+      clips: [],
+    };
+    tracks = [...tracks.slice(0, vizAt + 1), arr, ...tracks.slice(vizAt + 1)];
+  }
+
+  const viz = tracks.find((t) => t.role === "ai-visualizer")!;
+  const arr = tracks.find((t) => t.role === "ai-arrangement")!;
+  const rest = tracks.filter((t) => t.role !== "ai-visualizer" && t.role !== "ai-arrangement");
+  const next = [viz, arr, ...rest];
+  const same =
+    next.length === project.tracks.length &&
+    next.every((t, i) => t === project.tracks[i]);
+  return same ? project : { ...project, tracks: next };
+}
+
 /** Migrate older single-track projects to multi-track layout */
 export function ensureMultiTrack(project: Project): Project {
   const videoTracks = project.tracks.filter((t) => t.kind === "VIDEO");
   const audioTracks = project.tracks.filter((t) => t.kind === "AUDIO");
-  if (videoTracks.length >= 2 && audioTracks.length >= 2) return project;
+  if (videoTracks.length >= 2 && audioTracks.length >= 2) {
+    return ensureAiVideoTracks(project);
+  }
 
   const empty = createEmptyProject(project.name);
   const v1 = empty.tracks.find((t) => t.name === "V1")!;
@@ -149,7 +229,7 @@ export function ensureMultiTrack(project: Project): Project {
   const migratedAudios =
     audioTracks[0]?.clips.map((c) => ({ ...c, trackId: a1.id })) ?? [];
 
-  return {
+  return ensureAiVideoTracks({
     ...project,
     tracks: empty.tracks.map((t) => {
       if (t.name === "V1") return { ...t, clips: migratedVideos };
@@ -160,7 +240,7 @@ export function ensureMultiTrack(project: Project): Project {
       }
       return t;
     }),
-  };
+  });
 }
 
 /** Blob URLs die after reload; missing: was written on Save */

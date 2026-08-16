@@ -4,7 +4,7 @@
  * Philosophy matches packages/cultivation: proposal → human decision → optional Vault write.
  */
 
-import type { Project, ProjectEditProposal, Marker } from "./models";
+import type { Clip, Project, ProjectEditProposal, Marker } from "./models";
 
 function uid(): string {
   return crypto.randomUUID();
@@ -163,6 +163,44 @@ export function applyProposal(project: Project, proposal: ProjectEditProposal): 
           kind: (op.payload.kind as Marker["kind"]) ?? "custom",
         };
         next = { ...next, markers: [...next.markers, marker] };
+        break;
+      }
+      case "replace_track_clips": {
+        const trackId = op.targetId;
+        const raw = op.payload.clips;
+        if (trackId && Array.isArray(raw)) {
+          next = {
+            ...next,
+            tracks: next.tracks.map((t) => {
+              if (t.id !== trackId) return t;
+              const clips = (raw as Clip[]).map((c) => ({
+                ...c,
+                id: c.id || uid(),
+                trackId: t.id,
+              }));
+              return { ...t, clips };
+            }),
+            durationMs: Math.max(
+              next.durationMs,
+              ...(raw as Clip[]).map((c) => c.range?.endMs ?? 0),
+            ),
+          };
+        }
+        break;
+      }
+      case "add_clip": {
+        const trackId = String(op.targetId || op.payload.trackId || "");
+        const clip = op.payload.clip as Clip | undefined;
+        if (trackId && clip) {
+          next = {
+            ...next,
+            tracks: next.tracks.map((t) =>
+              t.id === trackId
+                ? { ...t, clips: [...t.clips, { ...clip, id: clip.id || uid(), trackId: t.id }] }
+                : t,
+            ),
+          };
+        }
         break;
       }
       case "sync_to_beat":

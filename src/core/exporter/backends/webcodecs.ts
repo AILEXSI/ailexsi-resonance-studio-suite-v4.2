@@ -24,6 +24,7 @@ import {
   sourceTimeSec,
 } from "../frame-source";
 import { planTimeline } from "../planner";
+import { drawVisualizerFrame, visualizerEnergyAt } from "../../ai-visualizer";
 import type { ExportClip, ExportHooks, ExportJob, ExportResult } from "../types";
 
 let h264Probe: boolean | null = null;
@@ -228,6 +229,7 @@ async function renderMp4(
               report,
             },
             lastEl,
+            job,
           );
         }
       })(),
@@ -314,18 +316,31 @@ async function addFrame(env: EncodeCtx, frameIndex: number) {
   if (frameIndex % 4 === 0) await new Promise((r) => setTimeout(r, 0));
 }
 
+function overlayVisualizer(env: EncodeCtx, job: ExportJob, frameIndex: number) {
+  const viz = job.visualizer;
+  if (!viz?.enabled) return;
+  const tMs = (frameIndex / env.fps) * 1000;
+  const energy = visualizerEnergyAt(tMs, viz.beatsMs, 0.15);
+  drawVisualizerFrame(env.ctx, env.canvas.width, env.canvas.height, tMs, energy, viz.beatsMs);
+}
+
 async function encodeRun(
   run: FrameRun,
   env: EncodeCtx,
   lastEl: HTMLVideoElement | null,
+  job: ExportJob,
 ): Promise<HTMLVideoElement | null> {
   const { ctx, canvas, fps } = env;
   const clip = run.clip;
+  const commit = async (frameIndex: number) => {
+    overlayVisualizer(env, job, frameIndex);
+    await addFrame(env, frameIndex);
+  };
   if (!clip || !isPlayableSource(clip.sourcePath)) {
     clearCanvas(ctx, canvas);
     for (let k = 0; k < run.count; k++) {
       env.throwIfAborted();
-      await addFrame(env, run.startIndex + k);
+      await commit(run.startIndex + k);
     }
     return lastEl;
   }
@@ -340,7 +355,7 @@ async function encodeRun(
     }
     for (let k = 0; k < run.count; k++) {
       env.throwIfAborted();
-      await addFrame(env, run.startIndex + k);
+      await commit(run.startIndex + k);
     }
     return lastEl;
   }
@@ -362,7 +377,7 @@ async function encodeRun(
         } else {
           lastEl = await paintHtmlVideo(ctx, canvas, clip, timestamps[k] ?? 0, lastEl);
         }
-        await addFrame(env, run.startIndex + k);
+        await commit(run.startIndex + k);
         k++;
       }
     } catch (e) {
@@ -371,7 +386,7 @@ async function encodeRun(
     while (k < run.count) {
       env.throwIfAborted();
       lastEl = await paintHtmlVideo(ctx, canvas, clip, timestamps[k]!, lastEl);
-      await addFrame(env, run.startIndex + k);
+      await commit(run.startIndex + k);
       k++;
     }
     return lastEl;
@@ -380,7 +395,7 @@ async function encodeRun(
   for (let k = 0; k < run.count; k++) {
     env.throwIfAborted();
     lastEl = await paintHtmlVideo(ctx, canvas, clip, timestamps[k]!, lastEl);
-    await addFrame(env, run.startIndex + k);
+    await commit(run.startIndex + k);
   }
   return lastEl;
 }

@@ -3,6 +3,7 @@ import {
   createEmptyProject,
   ensureMultiTrack,
   isPlayableMediaUrl,
+  isUserVideoTrack,
   type Project,
   type ProjectEditProposal,
   type MediaAsset,
@@ -10,6 +11,9 @@ import {
   type Track,
 } from "./core/models";
 import { generateProposal, applyProposal, rejectProposal } from "./core/ai-command";
+import { isTrackActiveForPreview, toggleTrackMute, toggleTrackSolo } from "./core/track-mix";
+import { collectBeatTimesMs, drawVisualizerFrame, visualizerEnergyAt } from "./core/ai-visualizer";
+import { proposeArrangement } from "./core/ai-arrangement";
 import { loadProject, saveProject } from "./core/project-store";
 import {
   putMediaBlob,
@@ -34,6 +38,23 @@ function clipAt(track: Track, timeMs: number): Clip | null {
   return (
     track.clips.find((c) => timeMs >= c.range.startMs && timeMs < c.range.endMs) ?? null
   );
+}
+
+function contentVideoStack(tracks: Track[]): Track[] {
+  const users = tracks.filter((t) => isUserVideoTrack(t) && isTrackActiveForPreview(tracks, t));
+  const arr = tracks.filter(
+    (t) => t.role === "ai-arrangement" && isTrackActiveForPreview(tracks, t),
+  );
+  return [...users, ...arr];
+}
+
+function topContentClip(tracks: Track[], timeMs: number): Clip | null {
+  const stack = contentVideoStack(tracks);
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const c = clipAt(stack[i]!, timeMs);
+    if (c) return c;
+  }
+  return null;
 }
 
 const APP_VERSION = "4.2.0";
@@ -117,6 +138,7 @@ export function App() {
   } | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const vizCanvasRef = useRef<HTMLCanvasElement>(null);
   const audio1Ref = useRef<HTMLAudioElement>(null);
   const audio2Ref = useRef<HTMLAudioElement>(null);
   const rafRef = useRef<number>(0);
@@ -205,23 +227,39 @@ export function App() {
   }, []);
 
 
-  const videoTracks = useMemo(
-    () => project.tracks.filter((t) => t.kind === "VIDEO"),
+  const userVideoTracks = useMemo(
+    () => project.tracks.filter(isUserVideoTrack),
     [project.tracks]
   );
   const audioTracks = useMemo(
     () => project.tracks.filter((t) => t.kind === "AUDIO"),
     [project.tracks]
   );
+  const previewVideoStack = useMemo(() => {
+    const users = project.tracks.filter(
+      (t) => isUserVideoTrack(t) && isTrackActiveForPreview(project.tracks, t),
+    );
+    const arr = project.tracks.filter(
+      (t) => t.role === "ai-arrangement" && isTrackActiveForPreview(project.tracks, t),
+    );
+    return [...users, ...arr];
+  }, [project.tracks]);
+  const visualizerTrack = useMemo(
+    () => project.tracks.find((t) => t.role === "ai-visualizer") ?? null,
+    [project.tracks],
+  );
+  const visualizerPreviewOn = !!(
+    visualizerTrack && isTrackActiveForPreview(project.tracks, visualizerTrack)
+  );
 
-  // Topmost video track with a clip under playhead (V2 over V1 — later tracks win)
+  // Topmost content video (arrangement over V1/V2). Visualizer is an overlay, not a replacement.
   const activeVideoClip = useMemo(() => {
-    for (let i = videoTracks.length - 1; i >= 0; i--) {
-      const c = clipAt(videoTracks[i], project.playheadMs);
+    for (let i = previewVideoStack.length - 1; i >= 0; i--) {
+      const c = clipAt(previewVideoStack[i]!, project.playheadMs);
       if (c) return c;
     }
     return null;
-  }, [videoTracks, project.playheadMs]);
+  }, [previewVideoStack, project.playheadMs]);
 
   const activeVideoAsset = useMemo(() => {
     if (!activeVideoClip?.mediaAssetId) return null;
@@ -251,7 +289,7 @@ export function App() {
   const muteVideo = hasAnyAudio;
 
   const defaultTargetTrack = targetTrackId
-    ?? videoTracks[0]?.id
+    ?? userVideoTracks[0]?.id
     ?? audioTracks[0]?.id
     ?? project.tracks[0]?.id
     ?? null;
@@ -267,15 +305,7 @@ export function App() {
         const v = videoRef.current;
         if (!v) return;
         // find active clip at clamped time
-        const vTracks = project.tracks.filter((t) => t.kind === "VIDEO");
-        let clip: Clip | null = null;
-        for (let i = vTracks.length - 1; i >= 0; i--) {
-          const c = clipAt(vTracks[i], clamped);
-          if (c) {
-            clip = c;
-            break;
-          }
-        }
+        const clip = topContentClip(project.tracks, clamped);
         if (clip?.sourceRange) {
           const offset = clamped - clip.range.startMs;
           try {
@@ -300,8 +330,12 @@ export function App() {
           } catch { /* */ }
         }
       };
-      syncAudio(audio1Ref.current, audioTracks[0]);
-      syncAudio(audio2Ref.current, audioTracks[1]);
+      if (audioTracks[0] && isTrackActiveForPreview(project.tracks, audioTracks[0])) {
+        syncAudio(audio1Ref.current, audioTracks[0]);
+      }
+      if (audioTracks[1] && isTrackActiveForPreview(project.tracks, audioTracks[1])) {
+        syncAudio(audio2Ref.current, audioTracks[1]);
+      }
 
       requestAnimationFrame(() => {
         isSeekingRef.current = false;
@@ -329,11 +363,15 @@ export function App() {
     }
     const a1 = audio1Ref.current;
     const a2 = audio2Ref.current;
-    if (a1 && audioAssetsForTracks[0]) {
+    if (a1 && audioAssetsForTracks[0] && audioTracks[0] && isTrackActiveForPreview(project.tracks, audioTracks[0])) {
       promises.push(a1.play().catch((err) => console.warn("audio1", err)));
+    } else {
+      a1?.pause();
     }
-    if (a2 && audioAssetsForTracks[1]) {
+    if (a2 && audioAssetsForTracks[1] && audioTracks[1] && isTrackActiveForPreview(project.tracks, audioTracks[1])) {
       promises.push(a2.play().catch((err) => console.warn("audio2", err)));
+    } else {
+      a2?.pause();
     }
 
     try {
@@ -342,7 +380,7 @@ export function App() {
     } catch {
       setIsPlaying(true);
     }
-  }, [muteVideo, activeVideoAsset, audioAssetsForTracks]);
+  }, [muteVideo, activeVideoAsset, audioAssetsForTracks, audioTracks, project.tracks]);
 
   const stopPlayback = useCallback(() => {
     videoRef.current?.pause();
@@ -359,6 +397,22 @@ export function App() {
   useEffect(() => {
     if (videoRef.current) videoRef.current.muted = muteVideo;
   }, [muteVideo, activeVideoAsset?.id]);
+
+  useEffect(() => {
+    if (!isPlaying) return;
+    const a1 = audio1Ref.current;
+    const a2 = audio2Ref.current;
+    if (audioTracks[0] && isTrackActiveForPreview(project.tracks, audioTracks[0]) && audioAssetsForTracks[0]) {
+      void a1?.play().catch(() => undefined);
+    } else {
+      a1?.pause();
+    }
+    if (audioTracks[1] && isTrackActiveForPreview(project.tracks, audioTracks[1]) && audioAssetsForTracks[1]) {
+      void a2?.play().catch(() => undefined);
+    } else {
+      a2?.pause();
+    }
+  }, [isPlaying, project.tracks, audioTracks, audioAssetsForTracks]);
 
   useEffect(() => {
     const v = Math.max(0, Math.min(1, masterVolume));
@@ -441,6 +495,38 @@ export function App() {
     return () => cancelAnimationFrame(raf);
   }, [isPlaying, masterVolume, ensureAudioGraph]);
 
+  useEffect(() => {
+    const canvas = vizCanvasRef.current;
+    if (!canvas) return;
+    const parent = canvas.parentElement;
+    if (!parent) return;
+    const resize = () => {
+      const r = parent.getBoundingClientRect();
+      canvas.width = Math.max(2, Math.floor(r.width));
+      canvas.height = Math.max(2, Math.floor(r.height));
+    };
+    resize();
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    if (!visualizerPreviewOn) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      canvas.style.opacity = "0";
+      return;
+    }
+    canvas.style.opacity = "1";
+    const beats = collectBeatTimesMs(project);
+    let raf = 0;
+    const tick = () => {
+      resize();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const energy = visualizerEnergyAt(project.playheadMs, beats, meterLevel);
+      drawVisualizerFrame(ctx, canvas.width, canvas.height, project.playheadMs, energy, beats);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [visualizerPreviewOn, project.playheadMs, project.durationMs, project.markers, project.mediaAssets, meterLevel]);
+
   // rAF clock
   useEffect(() => {
     if (!isPlaying) {
@@ -456,19 +542,11 @@ export function App() {
         const next = Math.min(p.playheadMs + dt, max);
 
         if (!isSeekingRef.current) {
-          const vTracks = p.tracks.filter((t) => t.kind === "VIDEO");
           const aTracks = p.tracks.filter((t) => t.kind === "AUDIO");
 
           const v = videoRef.current;
           if (v) {
-            let clip: Clip | null = null;
-            for (let i = vTracks.length - 1; i >= 0; i--) {
-              const c = clipAt(vTracks[i], next);
-              if (c) {
-                clip = c;
-                break;
-              }
-            }
+            const clip = topContentClip(p.tracks, next);
             if (clip?.sourceRange) {
               const offset = next - clip.range.startMs;
               const srcT = (clip.sourceRange.startMs + offset) / 1000;
@@ -502,12 +580,7 @@ export function App() {
           // resync media to loop in
           requestAnimationFrame(() => {
             const v = videoRef.current;
-            const vTracks = p.tracks.filter((t) => t.kind === "VIDEO");
-            let clip: Clip | null = null;
-            for (let i = vTracks.length - 1; i >= 0; i--) {
-              const c = clipAt(vTracks[i], back);
-              if (c) { clip = c; break; }
-            }
+            const clip = topContentClip(p.tracks, back);
             if (v && clip?.sourceRange) {
               const offset = back - clip.range.startMs;
               try { v.currentTime = Math.max(0, (clip.sourceRange.startMs + offset) / 1000); } catch { /* */ }
@@ -615,8 +688,9 @@ export function App() {
         }
 
         let track =
-          p.tracks.find((t) => t.id === targetTrackId && t.kind === kind) ??
-          p.tracks.find((t) => t.kind === kind && t.clips.length === 0) ??
+          p.tracks.find((t) => t.id === targetTrackId && t.kind === kind && t.role !== "ai-visualizer") ??
+          p.tracks.find((t) => t.kind === kind && t.role !== "ai-visualizer" && t.role !== "ai-arrangement" && t.clips.length === 0) ??
+          p.tracks.find((t) => t.kind === kind && t.role !== "ai-visualizer" && t.role !== "ai-arrangement") ??
           p.tracks.find((t) => t.kind === kind)!;
 
         const lastEnd = track.clips.reduce((m, c) => Math.max(m, c.range.endMs), 0);
@@ -656,8 +730,10 @@ export function App() {
       if (!asset) return;
       const kind = asset.type === "video" ? "VIDEO" : "AUDIO";
       setProject((p) => {
+        const wanted = trackId || targetTrackId;
         const track =
-          p.tracks.find((t) => t.id === (trackId || targetTrackId) && t.kind === kind) ??
+          p.tracks.find((t) => t.id === wanted && t.kind === kind && t.role !== "ai-visualizer") ??
+          p.tracks.find((t) => t.kind === kind && t.role !== "ai-visualizer" && t.role !== "ai-arrangement") ??
           p.tracks.find((t) => t.kind === kind)!;
         const startMs = p.playheadMs;
         const clip: Clip = {
@@ -758,6 +834,7 @@ export function App() {
           fileName: safeName,
           rangeStartMs: rangeStart,
           rangeEndMs: rangeEnd,
+          beatsMs: collectBeatTimesMs(project),
         },
       );
       const result = await exportTimeline(job, {
@@ -1532,7 +1609,55 @@ export function App() {
     if (!pendingProposal) return;
     setProject(rejectProposal(project, pendingProposal.id));
     setPendingProposal(null);
+    flash("Proposal rejected — timeline unchanged");
   };
+
+  const toggleMute = useCallback((trackId: string) => {
+    setProject((p) => ({
+      ...p,
+      tracks: toggleTrackMute(p.tracks, trackId),
+      updatedAt: new Date().toISOString(),
+    }));
+  }, []);
+
+  const toggleSolo = useCallback((trackId: string) => {
+    setProject((p) => ({
+      ...p,
+      tracks: toggleTrackSolo(p.tracks, trackId),
+      updatedAt: new Date().toISOString(),
+    }));
+  }, []);
+
+  const placeVisualizerLayer = useCallback(() => {
+    setUndoStack((s) => [...s.slice(-29), project]);
+    setRedoStack([]);
+    setProject((p) => {
+      const viz = p.tracks.find((t) => t.role === "ai-visualizer");
+      if (!viz) return p;
+      const endMs = Math.max(p.durationMs, 2000);
+      const clip: Clip = {
+        id: crypto.randomUUID(),
+        trackId: viz.id,
+        range: { startMs: 0, endMs },
+        label: "Beat visualizer",
+        metadata: { role: "ai-visualizer", style: "pulse-bars" },
+      };
+      return {
+        ...p,
+        durationMs: Math.max(p.durationMs, endMs),
+        tracks: p.tracks.map((t) => (t.id === viz.id ? { ...t, clips: [clip] } : t)),
+        updatedAt: new Date().toISOString(),
+      };
+    });
+    flash("Visualizer layer placed — Mute or Undo to reverse");
+  }, [project]);
+
+  const proposeArrangementTrack = useCallback(() => {
+    const proposal = proposeArrangement(project);
+    setProject((p) => ({ ...p, proposals: [...p.proposals, proposal] }));
+    setPendingProposal(proposal);
+    flash("Arrangement proposal ready — Accept or Reject");
+  }, [project]);
 
 
   // Close context menu on outside click (not on mouseleave — that blocked tool selection)
@@ -1812,7 +1937,7 @@ export function App() {
               .filter((t) => t.kind === "VIDEO" || t.kind === "AUDIO")
               .map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.name} ({t.kind})
+                  {t.name}{t.muted ? " [M]" : ""}{t.soloed ? " [S]" : ""}
                 </option>
               ))}
           </select>
@@ -1883,6 +2008,7 @@ export function App() {
               </span>
             </div>
           )}
+          <canvas ref={vizCanvasRef} className="viz-overlay" aria-hidden />
           {/* Dual audio elements for A1 / A2 */}
           <audio
             ref={audio1Ref}
@@ -2061,7 +2187,7 @@ export function App() {
         </div>
         <div className="field">
           <label>Tracks</label>
-          <div className="muted">V1 V2 · A1 A2 · crossover ready</div>
+          <div className="muted">AI Viz · AI Arr · V1 V2 · A1 A2</div>
         </div>
 
       </aside>
@@ -2073,11 +2199,69 @@ export function App() {
             {project.tracks.map((track) => (
               <div
                 key={track.id}
-                className={`timeline-label ${track.kind}${targetTrackId === track.id ? " active" : ""}`}
+                className={`timeline-label ${track.kind}${track.role ? ` role-${track.role}` : ""}${
+                  targetTrackId === track.id ? " active" : ""
+                }${track.muted ? " is-muted" : ""}${track.soloed ? " is-solo" : ""}`}
                 onClick={() => setTargetTrackId(track.id)}
                 title="Target track for Import / Place"
               >
-                {track.name}
+                <span className="timeline-label-name">
+                  {track.role === "ai-visualizer"
+                    ? "Visualizer"
+                    : track.role === "ai-arrangement"
+                      ? "Arrangement"
+                      : track.name}
+                </span>
+                <span className="track-mix">
+                  <button
+                    type="button"
+                    className={`track-mix-btn mute${track.muted ? " on" : ""}`}
+                    title="Mute — hidden in preview and export"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleMute(track.id);
+                    }}
+                  >
+                    M
+                  </button>
+                  <button
+                    type="button"
+                    className={`track-mix-btn solo${track.soloed ? " on" : ""}`}
+                    title="Solo — preview only this kind"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSolo(track.id);
+                    }}
+                  >
+                    S
+                  </button>
+                  {track.role === "ai-visualizer" && (
+                    <button
+                      type="button"
+                      className="track-mix-btn ai"
+                      title="Place beat-sync visualizer layer (undoable)"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        placeVisualizerLayer();
+                      }}
+                    >
+                      Viz
+                    </button>
+                  )}
+                  {track.role === "ai-arrangement" && (
+                    <button
+                      type="button"
+                      className="track-mix-btn ai"
+                      title="Propose arrangement — Accept required"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        proposeArrangementTrack();
+                      }}
+                    >
+                      AI
+                    </button>
+                  )}
+                </span>
               </div>
             ))}
           </div>
@@ -2218,7 +2402,7 @@ export function App() {
               {project.tracks.map((track) => (
                 <div
                   key={track.id}
-                  className="track-lane"
+                  className={`track-lane${track.muted ? " is-muted" : ""}${track.soloed ? " is-solo" : ""}`}
                   data-track-id={track.id}
                   onClick={(e) => {
                     setTargetTrackId(track.id);
@@ -2240,7 +2424,7 @@ export function App() {
                     return (
                       <div
                         key={clip.id}
-                        className={`clip ${track.kind}`}
+                        className={`clip ${track.kind}${track.role ? ` ${track.role}` : ""}`}
                         style={{
                           left: `${left}%`,
                           width: `${width}%`,

@@ -12,6 +12,8 @@ export interface StudioTrack {
   id: string;
   kind: string;
   clips: StudioClip[];
+  muted?: boolean;
+  role?: string;
 }
 
 export interface StudioAsset {
@@ -38,6 +40,7 @@ export function jobFromProject(
     rangeStartMs?: number;
     rangeEndMs?: number;
     fileName?: string;
+    beatsMs?: number[];
   },
 ): ExportJob {
   const start = opts?.rangeStartMs ?? 0;
@@ -51,6 +54,8 @@ export function jobFromProject(
       durationMs: Math.max(0, end - start),
       tracks: project.tracks
         .filter((t) => t.kind === "VIDEO" || t.kind === "AUDIO")
+        .filter((t) => !t.muted)
+        .filter((t) => t.role !== "ai-visualizer")
         .map((t) => ({
           id: t.id,
           kind: t.kind as "VIDEO" | "AUDIO",
@@ -83,6 +88,12 @@ export function jobFromProject(
       includeAudio: true,
       videoBitrate: "8M",
       audioBitrate: "192k",
+    },
+    visualizer: {
+      enabled: project.tracks.some(
+        (t) => t.role === "ai-visualizer" && !t.muted && t.clips.length > 0,
+      ),
+      beatsMs: opts?.beatsMs ?? [],
     },
   };
 }
