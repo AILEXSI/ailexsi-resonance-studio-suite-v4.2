@@ -36,7 +36,7 @@ export async function exportBlobToMp4(
   const { invoke } = await import("@tauri-apps/api/tauri");
   const { save } = await import("@tauri-apps/api/dialog");
   const { writeBinaryFile } = await import("@tauri-apps/api/fs");
-  const { tempDir, join } = await import("@tauri-apps/api/path");
+  const { cacheDir, join } = await import("@tauri-apps/api/path");
 
   // Verify ffmpeg before writing large temps
   try {
@@ -48,7 +48,7 @@ export async function exportBlobToMp4(
   }
 
   const safe = suggestedName.replace(/[^\w\-]+/g, "_").replace(/\.(mp4|webm)$/i, "");
-  const tmp = await tempDir();
+  const tmp = await cacheDir();
   const inPath = await join(tmp, `rs_${safe}_${Date.now()}.webm`);
 
   const bytes = new Uint8Array(await blob.arrayBuffer());

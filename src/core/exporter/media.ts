@@ -3,8 +3,8 @@ const audioCache = new Map<string, AudioBuffer>();
 const presentedAt = new WeakMap<HTMLVideoElement, number>();
 
 const FRAME_EPS = 1 / 120;
-const SEEK_TIMEOUT_MS = 1500;
-const PRESENT_TIMEOUT_MS = 80;
+const SEEK_TIMEOUT_MS = 2000;
+const PRESENT_TIMEOUT_MS = 250;
 
 export function isPlayableSource(url: string | undefined): boolean {
   if (!url) return false;
@@ -76,12 +76,16 @@ export async function seekVideo(el: HTMLVideoElement, timeSec: number) {
       el.addEventListener("seeked", done);
       el.addEventListener("error", done);
       const timer = window.setTimeout(done, SEEK_TIMEOUT_MS);
-      el.currentTime = t;
+      try {
+        el.currentTime = t;
+      } catch {
+        done();
+      }
     });
   }
 
   await waitForPresentedFrame(el);
-  presentedAt.set(el, t);
+  presentedAt.set(el, el.currentTime);
 }
 
 function waitForPresentedFrame(el: HTMLVideoElement): Promise<void> {

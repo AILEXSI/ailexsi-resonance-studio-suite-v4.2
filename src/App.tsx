@@ -36,7 +36,7 @@ function clipAt(track: Track, timeMs: number): Clip | null {
   );
 }
 
-const APP_VERSION = "4.01";
+const APP_VERSION = "4.2.0";
 
 export function App() {
   const [project, setProject] = useState<Project>(() => {
@@ -77,6 +77,7 @@ export function App() {
   const [exportPhase, setExportPhase] = useState<"idle" | "recording" | "converting" | "saving">("idle");
   const [desktopMp4Ready, setDesktopMp4Ready] = useState(false);
   const exportLockRef = useRef(false);
+  const exportAbortRef = useRef<AbortController | null>(null);
   const [exportName, setExportName] = useState("");
   const [showExportDlg, setShowExportDlg] = useState(false);
   const cancelRenderRef = useRef(false);
@@ -709,9 +710,10 @@ export function App() {
     [project]
   );
 
-  /** Real media export: record mixed video (top track) + audio tracks → WebM */
+  /** Real media export: WebCodecs + Mediabunny → H.264/AAC MP4. WebM is never a success. */
   const cancelExport = useCallback(() => {
     cancelRenderRef.current = true;
+    exportAbortRef.current?.abort();
     stopPlayback();
     setIsRendering(false);
     setRenderProgress(0);
@@ -726,11 +728,13 @@ export function App() {
       return;
     }
     exportLockRef.current = true;
+    const abort = new AbortController();
+    exportAbortRef.current = abort;
     const safeName = (filename || project.name || "resonance").replace(/[^\w\-]+/g, "_");
     cancelRenderRef.current = false;
     setShowExportDlg(false);
     setIsRendering(true);
-    setExportPhase("recording");
+    setExportPhase("converting");
     setRenderProgress(0);
     setPlayError(null);
     stopPlayback();
@@ -757,6 +761,7 @@ export function App() {
         },
       );
       const result = await exportTimeline(job, {
+        signal: abort.signal,
         onProgress: (p) => {
           setRenderProgress(p.percent);
           if (p.percent >= 90) setExportPhase("saving");
@@ -1637,7 +1642,7 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="logo">AILEXSI Resonance Studio Suite <span className="version">V{APP_VERSION}</span></div>
+        <div className="logo">AILEXSI Resonance Studio Suite V4.2 <span className="version">{APP_VERSION}</span></div>
         <nav>
           <button type="button" onClick={() => {
             stopPlayback();
@@ -2001,7 +2006,7 @@ export function App() {
                 background: "#4af", borderRadius: 3, transition: "width 0.2s",
               }} />
             </div>
-            <div className="muted" style={{ fontSize: 12 }}>{renderProgress}% — {exportPhase === "saving" ? "Saving file…" : "Recording"}</div>
+            <div className="muted" style={{ fontSize: 12 }}>{renderProgress}% — {exportPhase === "saving" ? "Saving file…" : exportPhase === "converting" ? "Decoding + encoding MP4" : "Recording"}</div>
             <button
               type="button"
               onClick={cancelExport}

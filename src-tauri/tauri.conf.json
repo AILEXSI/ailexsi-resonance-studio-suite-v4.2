@@ -7,8 +7,8 @@
     "withGlobalTauri": true
   },
   "package": {
-    "productName": "AILEXSI Resonance Studio",
-    "version": "0.3.0"
+    "productName": "AILEXSI Resonance Studio Suite V4.2",
+    "version": "4.2.0"
   },
   "tauri": {
     "allowlist": {
@@ -28,6 +28,7 @@
         "readFile": true,
         "scope": [
           "$TEMP/**",
+          "$CACHE/**",
           "$DOWNLOAD/**",
           "$DOCUMENT/**",
           "$DESKTOP/**",
@@ -55,7 +56,7 @@
     },
     "windows": [
       {
-        "title": "AILEXSI Resonance Studio",
+        "title": "AILEXSI Resonance Studio Suite V4.2",
         "width": 1440,
         "height": 900,
         "resizable": true,

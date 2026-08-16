@@ -30,7 +30,7 @@ export async function exportTimeline(
   const plan = planTimeline(job);
   if (!plan.segments.length) return emptyFail(job, "Empty timeline plan");
   const backend = detectBackend();
-  const hardMs = Math.max(30_000, plan.durationMs * 6 + 20_000);
+  const hardMs = Math.max(45_000, plan.durationMs * 12 + 25_000);
   const run = async (): Promise<ExportResult> => {
     if (backend === "ffmpeg" && typeof window === "undefined") {
       const { exportWithFfmpeg } = await import("./backends/ffmpeg");

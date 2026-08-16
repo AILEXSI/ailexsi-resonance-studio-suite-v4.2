@@ -59,6 +59,7 @@ export function jobFromProject(
             .map((c) => {
               const asset = c.mediaAssetId ? assets.get(c.mediaAssetId) : undefined;
               const shift = start;
+              const kind = asset?.type;
               return {
                 id: c.id,
                 startMs: Math.max(0, c.range.startMs - shift),
@@ -66,6 +67,8 @@ export function jobFromProject(
                 sourcePath: asset?.localPathOrUrl || "",
                 sourceInMs: c.sourceRange?.startMs ?? 0,
                 sourceOutMs: c.sourceRange?.endMs,
+                sourceKind:
+                  kind === "image" || kind === "audio" || kind === "video" ? kind : undefined,
                 label: c.label || asset?.name,
               };
             }),

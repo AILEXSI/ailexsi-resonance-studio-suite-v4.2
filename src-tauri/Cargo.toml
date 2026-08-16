@@ -1,7 +1,7 @@
 [package]
 name = "ailexsi-resonance-studio"
-version = "0.3.0"
-description = "AILEXSI Resonance Studio — local-first creative desktop"
+version = "4.2.0"
+description = "AILEXSI Resonance Studio Suite V4.2 — local-first creative desktop"
 authors = ["AILEXSI"]
 edition = "2021"
 

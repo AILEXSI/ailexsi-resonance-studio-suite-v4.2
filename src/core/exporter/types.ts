@@ -21,6 +21,7 @@ export interface ExportClip {
   sourcePath: string;
   sourceInMs?: number;
   sourceOutMs?: number;
+  sourceKind?: "video" | "audio" | "image";
   label?: string;
 }
 

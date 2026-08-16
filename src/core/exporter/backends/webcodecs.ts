@@ -15,6 +15,14 @@ import {
   canEncodeVideo,
 } from "mediabunny";
 import { clearMediaCache, decodeAudio, isPlayableSource, loadVideo, seekVideo } from "../media";
+import {
+  clearFrameSources,
+  drawContain,
+  getDecoder,
+  isImageClip,
+  loadStillImage,
+  sourceTimeSec,
+} from "../frame-source";
 import { planTimeline } from "../planner";
 import type { ExportClip, ExportHooks, ExportJob, ExportResult } from "../types";
 
@@ -147,7 +155,8 @@ async function renderMp4(
   const canvas = document.createElement("canvas");
   canvas.width = plan.width % 2 === 0 ? plan.width : plan.width + 1;
   canvas.height = plan.height % 2 === 0 ? plan.height : plan.height + 1;
-  const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+  // desynchronized:true can capture a stale canvas and drop frames in the MP4
+  const ctx = canvas.getContext("2d", { alpha: false, desynchronized: false });
   if (!ctx) return fail(job, "Canvas 2D not available");
 
   const target = new BufferTarget();
@@ -188,28 +197,38 @@ async function renderMp4(
 
   const frameDur = 1 / plan.fps;
   const total = plan.frameCount;
-  const budget = Math.max(25_000, plan.durationMs * 5 + 15_000);
-  let lastClipId: string | null = null;
-  let lastEl: HTMLVideoElement | null = null;
+  const budget = Math.max(40_000, plan.durationMs * 10 + 20_000);
+
+  const report = (i: number) => {
+    if (i % 6 === 0 || i === total - 1) {
+      onProgress?.({
+        percent: Math.min(92, 14 + Math.round((i / Math.max(1, total)) * 78)),
+        stage: "Encoding H.264",
+        currentTimeMs: (i / plan.fps) * 1000,
+      });
+    }
+  };
 
   try {
     await withTimeout(
       (async () => {
-        for (let i = 0; i < total; i++) {
+        const runs = groupFrameRuns(job, total, plan.fps);
+        let lastEl: HTMLVideoElement | null = null;
+        for (const run of runs) {
           throwIfAborted();
-          const tMs = (i / plan.fps) * 1000;
-          const clip = topVideoAt(job, tMs);
-          lastEl = await paintFrame(ctx, canvas, clip, tMs, lastClipId, lastEl);
-          lastClipId = clip?.id ?? null;
-          await videoSource.add(i * frameDur, frameDur);
-          if (i % 4 === 0) await new Promise((r) => setTimeout(r, 0));
-          if (i % 6 === 0 || i === total - 1) {
-            onProgress?.({
-              percent: Math.min(92, 14 + Math.round((i / Math.max(1, total)) * 78)),
-              stage: "Encoding H.264",
-              currentTimeMs: tMs,
-            });
-          }
+          lastEl = await encodeRun(
+            run,
+            {
+              ctx,
+              canvas,
+              videoSource,
+              frameDur,
+              fps: plan.fps,
+              throwIfAborted,
+              report,
+            },
+            lastEl,
+          );
         }
       })(),
       budget,
@@ -219,11 +238,13 @@ async function renderMp4(
     await withTimeout(output.finalize(), 12_000, "MP4 mux");
   } catch (e) {
     try { await withTimeout(output.finalize(), 2_000, "mux abort"); } catch { /* */ }
+    clearFrameSources();
     clearMediaCache();
     if (signal?.aborted) return fail(job, "Export cancelled");
     throw e;
   }
 
+  clearFrameSources();
   clearMediaCache();
   const buffer = target.buffer;
   if (!buffer || buffer.byteLength < 800) return fail(job, "Encoder produced an empty file");
@@ -241,6 +262,22 @@ async function renderMp4(
   };
 }
 
+type FrameRun = {
+  clip: ExportClip | null;
+  startIndex: number;
+  count: number;
+};
+
+type EncodeCtx = {
+  ctx: CanvasRenderingContext2D;
+  canvas: HTMLCanvasElement;
+  videoSource: { add: (timestamp: number, duration?: number) => Promise<void> };
+  frameDur: number;
+  fps: number;
+  throwIfAborted: () => void;
+  report: (frameIndex: number) => void;
+};
+
 function topVideoAt(job: ExportJob, tMs: number): ExportClip | null {
   const videos = job.timeline.tracks.filter((t) => t.kind === "VIDEO");
   for (let i = videos.length - 1; i >= 0; i--) {
@@ -250,27 +287,119 @@ function topVideoAt(job: ExportJob, tMs: number): ExportClip | null {
   return null;
 }
 
-async function paintFrame(
-  ctx: CanvasRenderingContext2D,
-  canvas: HTMLCanvasElement,
-  clip: ExportClip | null,
-  tMs: number,
-  lastClipId: string | null,
-  lastEl: HTMLVideoElement | null,
-): Promise<HTMLVideoElement | null> {
+function groupFrameRuns(job: ExportJob, total: number, fps: number): FrameRun[] {
+  const runs: FrameRun[] = [];
+  let current: FrameRun | null = null;
+  for (let i = 0; i < total; i++) {
+    const clip = topVideoAt(job, (i / fps) * 1000);
+    const id = clip?.id ?? "";
+    if (current && (current.clip?.id ?? "") === id) {
+      current.count++;
+    } else {
+      current = { clip, startIndex: i, count: 1 };
+      runs.push(current);
+    }
+  }
+  return runs;
+}
+
+function clearCanvas(ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) {
   ctx.fillStyle = "#050608";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  if (!clip || !isPlayableSource(clip.sourcePath)) return lastEl;
+}
+
+async function addFrame(env: EncodeCtx, frameIndex: number) {
+  await env.videoSource.add(frameIndex * env.frameDur, env.frameDur);
+  env.report(frameIndex);
+  if (frameIndex % 4 === 0) await new Promise((r) => setTimeout(r, 0));
+}
+
+async function encodeRun(
+  run: FrameRun,
+  env: EncodeCtx,
+  lastEl: HTMLVideoElement | null,
+): Promise<HTMLVideoElement | null> {
+  const { ctx, canvas, fps } = env;
+  const clip = run.clip;
+  if (!clip || !isPlayableSource(clip.sourcePath)) {
+    clearCanvas(ctx, canvas);
+    for (let k = 0; k < run.count; k++) {
+      env.throwIfAborted();
+      await addFrame(env, run.startIndex + k);
+    }
+    return lastEl;
+  }
+
+  if (isImageClip(clip)) {
+    clearCanvas(ctx, canvas);
+    const img = await loadStillImage(clip.sourcePath);
+    if (img && img.naturalWidth > 1) {
+      drawContain(ctx, canvas, img.naturalWidth, img.naturalHeight, (dx, dy, dw, dh) => {
+        ctx.drawImage(img, dx, dy, dw, dh);
+      });
+    }
+    for (let k = 0; k < run.count; k++) {
+      env.throwIfAborted();
+      await addFrame(env, run.startIndex + k);
+    }
+    return lastEl;
+  }
+
+  const timestamps = Array.from({ length: run.count }, (_, k) =>
+    sourceTimeSec(clip, ((run.startIndex + k) / fps) * 1000, fps),
+  );
+
+  const decoded = await getDecoder(clip.sourcePath);
+  if (decoded) {
+    let k = 0;
+    try {
+      for await (const sample of decoded.sink.samplesAtTimestamps(timestamps)) {
+        env.throwIfAborted();
+        clearCanvas(ctx, canvas);
+        if (sample) {
+          sample.drawWithFit(ctx, { fit: "contain" });
+          sample.close();
+        } else {
+          lastEl = await paintHtmlVideo(ctx, canvas, clip, timestamps[k] ?? 0, lastEl);
+        }
+        await addFrame(env, run.startIndex + k);
+        k++;
+      }
+    } catch (e) {
+      console.warn("[export] decoder run failed, falling back", e);
+    }
+    while (k < run.count) {
+      env.throwIfAborted();
+      lastEl = await paintHtmlVideo(ctx, canvas, clip, timestamps[k]!, lastEl);
+      await addFrame(env, run.startIndex + k);
+      k++;
+    }
+    return lastEl;
+  }
+
+  for (let k = 0; k < run.count; k++) {
+    env.throwIfAborted();
+    lastEl = await paintHtmlVideo(ctx, canvas, clip, timestamps[k]!, lastEl);
+    await addFrame(env, run.startIndex + k);
+  }
+  return lastEl;
+}
+
+async function paintHtmlVideo(
+  ctx: CanvasRenderingContext2D,
+  canvas: HTMLCanvasElement,
+  clip: ExportClip,
+  targetSec: number,
+  lastEl: HTMLVideoElement | null,
+): Promise<HTMLVideoElement | null> {
+  clearCanvas(ctx, canvas);
   try {
-    const el = lastClipId === clip.id && lastEl ? lastEl : await loadVideo(clip.sourcePath);
-    const srcIn = clip.sourceInMs ?? 0;
-    const targetSec = (srcIn + (tMs - clip.startMs)) / 1000;
+    const el = await loadVideo(clip.sourcePath);
     await seekVideo(el, targetSec);
     if (el.videoWidth < 2) return el;
-    const scale = Math.min(canvas.width / el.videoWidth, canvas.height / el.videoHeight);
-    const w = el.videoWidth * scale;
-    const h = el.videoHeight * scale;
-    ctx.drawImage(el, (canvas.width - w) / 2, (canvas.height - h) / 2, w, h);
+    drawContain(ctx, canvas, el.videoWidth, el.videoHeight, (dx, dy, dw, dh) => {
+      ctx.drawImage(el, dx, dy, dw, dh);
+    });
     return el;
   } catch {
     return lastEl;
