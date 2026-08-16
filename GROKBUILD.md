@@ -2,8 +2,15 @@
 
 Copy everything below the line into a new Grok chat.
 
----
+--- Standalone
+# 1. Nested-Ordner aufräumen (wichtig)
+Remove-Item -Recurse -Force .\src-tauri\src-tauri -ErrorAction SilentlyContinue
 
+# 2. Tauri CLI installieren
+npm install -D @tauri-apps/cli@1.5.14
+
+# 3. Desktop-App starten
+npx tauri dev
 GrokBuild — AILEXSI Resonance Studio Suite V4.2
 
 FROZEN SOURCE (read/copy ONLY — never modify, never push to it):
