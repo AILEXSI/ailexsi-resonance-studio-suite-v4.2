@@ -1,4 +1,5 @@
-# Convert latest Resonance WebM in Downloads → MP4 via ffmpeg
+# LEGACY helper only. V4.2 export success path is WebCodecs → .mp4 directly.
+# Use this solely if an old .webm is already sitting in Downloads.
 $ErrorActionPreference = "Stop"
 
 $ff = Get-Command ffmpeg -ErrorAction SilentlyContinue
