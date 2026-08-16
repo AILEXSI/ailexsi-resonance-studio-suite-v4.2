@@ -18,7 +18,13 @@ if ($latest.status -ne "ready") {
   return
 }
 
-$payload = Join-Path $Repo "bridge" $latest.path "payload"
+# path "." / "repo-root" / empty → repo root is the payload (see bridge/LATEST.json)
+$pathKey = [string]$latest.path
+if ($latest.payload -eq "repo-root" -or $pathKey -eq "" -or $pathKey -eq "." -or $pathKey -eq "repo-root") {
+  $payload = $Repo
+} else {
+  $payload = Join-Path $Repo "bridge" $pathKey "payload"
+}
 if (-not (Test-Path $payload)) {
   Write-Host "STOP: payload missing $payload" -ForegroundColor Red
   return
@@ -29,8 +35,12 @@ Get-NetTCPConnection -LocalPort 1421 -ErrorAction SilentlyContinue | ForEach-Obj
   Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue
 }
 
+$exclude = @('.env', '.env.local', '.git', 'node_modules')
+if ($latest.exclude) {
+  $exclude = @($latest.exclude | ForEach-Object { ($_ -split '[\\/]')[0] })
+}
 Get-ChildItem $payload -Force | Where-Object {
-  $_.Name -notin @('.env', '.env.local', '.git', 'node_modules')
+  $_.Name -notin $exclude
 } | ForEach-Object {
   Copy-Item $_.FullName (Join-Path $Target $_.Name) -Recurse -Force
 }
