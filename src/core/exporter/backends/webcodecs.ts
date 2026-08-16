@@ -24,7 +24,7 @@ import {
   sourceTimeSec,
 } from "../frame-source";
 import { planTimeline } from "../planner";
-import { drawVisualizerFrame, visualizerEnergyAt } from "../../ai-visualizer";
+import { featuresFromTimeline, renderVisualizerScene } from "../../visualz";
 import type { ExportClip, ExportHooks, ExportJob, ExportResult } from "../types";
 
 let h264Probe: boolean | null = null;
@@ -322,8 +322,15 @@ function fillVisualizerFallback(env: EncodeCtx, job: ExportJob, frameIndex: numb
   if (!viz?.enabled) return;
   const tMs = (frameIndex / env.fps) * 1000;
   if (viz.spans?.length && !viz.spans.some((s) => tMs >= s.startMs && tMs < s.endMs)) return;
-  const energy = visualizerEnergyAt(tMs, viz.beatsMs, 0.15);
-  drawVisualizerFrame(env.ctx, env.canvas.width, env.canvas.height, tMs, energy, viz.beatsMs);
+  const features = featuresFromTimeline(tMs, viz.beatsMs, 0.15);
+  renderVisualizerScene(
+    env.ctx,
+    env.canvas.width,
+    env.canvas.height,
+    viz.sceneId,
+    features,
+    env.frameDur,
+  );
 }
 
 async function encodeRun(

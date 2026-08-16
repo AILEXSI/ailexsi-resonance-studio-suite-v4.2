@@ -42,6 +42,8 @@ export interface Track {
   soloed?: boolean;
   role?: TrackRole;
   height?: number;
+  /** Visualz scene id on the AI Visualizer lane (e.g. resonance-wave). */
+  visualizerSceneId?: string;
 }
 
 export interface Marker {

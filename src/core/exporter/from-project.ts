@@ -14,6 +14,7 @@ export interface StudioTrack {
   clips: StudioClip[];
   muted?: boolean;
   role?: string;
+  visualizerSceneId?: string;
 }
 
 export interface StudioAsset {
@@ -99,6 +100,7 @@ export function jobFromProject(
         enabled: !!(viz && !viz.muted && spans.length),
         beatsMs: opts?.beatsMs ?? [],
         spans,
+        sceneId: viz?.visualizerSceneId,
       };
     })(),
   };

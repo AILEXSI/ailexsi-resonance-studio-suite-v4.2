@@ -44,6 +44,7 @@ export interface ExportJob {
     enabled: boolean;
     beatsMs: number[];
     spans?: Array<{ startMs: number; endMs: number }>;
+    sceneId?: string;
   };
 }
 
