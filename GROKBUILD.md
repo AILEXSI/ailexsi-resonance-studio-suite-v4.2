@@ -1,55 +1,50 @@
-# GrokBuild prompt for V4.2
+# GrokBuild — AILEXSI Resonance Studio Suite V4.2
 
-Copy everything below the line into a new Grok chat.
+Current-state card. Copy below the line into a new Grok chat when continuing this product.
 
---- Standalone
-# 1. Nested-Ordner aufräumen (wichtig)
-Remove-Item -Recurse -Force .\src-tauri\src-tauri -ErrorAction SilentlyContinue
+---
 
-# 2. Tauri CLI installieren
-npm install -D @tauri-apps/cli@1.5.14
-
-# 3. Desktop-App starten
-npx tauri dev
 GrokBuild — AILEXSI Resonance Studio Suite V4.2
 
-FROZEN SOURCE (read/copy ONLY — never modify, never push to it):
-- https://github.com/AILEXSI/ailexsi-resonance-studio
-- Version Suite V4.01 / package 4.0.1
-- You may clone, read, and copy files into the V4.2 repo.
-- You must NOT commit, push, or rewrite history on the V4.01 repo.
-
-ACTIVE TARGET (all writes go here):
+ACTIVE TARGET (all writes here only):
 - https://github.com/AILEXSI/ailexsi-resonance-studio-suite-v4.2
 - Brand: AILEXSI Resonance Studio Suite V4.2
-- package version: 4.2.0
-- APP_VERSION in UI: 4.2.0
+- package.json + APP_VERSION: 4.2.0
+- Local folder: %USERPROFILE%\ResonanceStudio-V4.2
 
-USER CONTEXT
-- Windows; V4.01 may live in %USERPROFILE%\ResonanceStudio
-- V4.2 MUST use a SEPARATE folder e.g. %USERPROFILE%\ResonanceStudio-V4.2
-- Vite port 1421 only; never npm audit fix --force; pin Vite 5.4.x
-- Deps: mediabunny@1.54.0, @tauri-apps/api@1.5.6
+FROZEN / READ-ONLY (never modify, never push):
+- https://github.com/AILEXSI/ailexsi-resonance-studio  (V4.01 baseline)
 
-GOAL
-Evolve frozen V4.01 multi-track local NLE. Close gaps in order:
-1) Reliable export verification (real MP4, ftyp, video+audio)
-2) Still-image paint in exporter
-3) Pre-export media hydration (no missing blob after reload)
-4) Remove or hard-isolate MediaRecorder so it never looks like success after WebCodecs fail
-5) Tauri tree cleanup if nested src-tauri/src-tauri
-6) Keep Cut=V, C free; logo Suite V4.2
+HARD RULES
+1. Only real MP4 (H.264 + AAC when possible) counts as success. No silent WebM fallback.
+2. Cut = V. C stays free (Ctrl+C = copy).
+3. APP_VERSION and package.json must stay 4.2.0 and visible in the logo.
+4. Pin Vite 5.4.x. Never `npm audit fix --force`.
+5. Keep mediabunny@1.54.0 and @tauri-apps/api@1.5.6.
+6. Port 1421 only. No nested src-tauri/src-tauri.
+7. V4.01 repo stays untouched.
 
-BOOTSTRAP
-1. Read V4.01 README + ARCHITECTURE.md from frozen repo
-2. Copy full source into V4.2 repo / local V4.2 folder
-3. Bump branding to V4.2 / 4.2.0
-4. Implement P0 items with small commits
-5. One success path = real MP4 only
+CURRENT REALITY
+- MP4 export is a closed milestone: smooth video + full-strength music.
+- Path: jobFromProject → exportTimeline → Mediabunny VideoSampleSink → WebCodecs H.264/AAC MP4.
+- Desktop: `npm run tauri:dev` (Rust + ffmpeg on PATH).
+- Host is ready for the next modules.
 
-SUCCESS
-- localhost:1421 shows Suite V4.2
-- Export → .mp4 or clear error (never silent .webm)
-- Images on timeline render in export
-- Dead media detected before encode
+NEXT (do not reopen export unless it regresses)
+1. Sensorics (beats / energy / scenes) into the host
+2. One AI video track (proposal → human accept → new VIDEO lane)
+3. Stronger pre-export media hydration
+4. Keep Cut=V, C free, logo Suite V4.2 / 4.2.0
+
+START
+```powershell
+cd %USERPROFILE%\ResonanceStudio-V4.2
+npm install
+npm run dev          # http://localhost:1421
+# npm run tauri:dev  # standalone window
+```
+
+SUCCESS FOR NEW WORK
+- localhost:1421 still shows Suite V4.2 / 4.2.0
+- Export still ends in .mp4 or a clear error (never silent .webm)
 - V4.01 repo untouched

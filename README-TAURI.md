@@ -1,32 +1,31 @@
-# AILEXSI Resonance Studio — Desktop (Tauri) V0.3.0
+# AILEXSI Resonance Studio Suite V4.2 — Desktop (Tauri)
 
-Local-first creative NLE with **native H.264 MP4 export** via system **ffmpeg**.
+Standalone window. Primary encode is still **WebCodecs + Mediabunny → H.264/AAC MP4**. System **ffmpeg** is the native remux/save helper.
 
 ## Prerequisites (Windows)
 
 1. **Node.js 20+**
-2. **Rust** — https://rustup.rs/  
+2. **Rust** — https://rustup.rs/
    ```powershell
    winget install Rustlang.Rustup
    ```
-3. **Microsoft C++ Build Tools** (Visual Studio Build Tools) — required by Tauri on Windows
+3. **Microsoft C++ Build Tools** (Visual Studio Build Tools)
 4. **WebView2** — usually already on Windows 10/11
 5. **ffmpeg** on PATH:
    ```powershell
    winget install Gyan.FFmpeg
-   # or: winget install FFmpeg
    ffmpeg -version
    ```
 
 ## Install & run (dev)
 
 ```powershell
-cd C:\Users\marti\ResonanceStudio
+cd $env:USERPROFILE\ResonanceStudio-V4.2
 npm install
 npm run tauri:dev
 ```
 
-Opens the **desktop window** (not only the browser). Export uses **ffmpeg → MP4**.
+Opens the **desktop window** titled **AILEXSI Resonance Studio Suite V4.2**. Do not use a Firefox/Chrome tab for the “standalone” path.
 
 ## Production build
 
@@ -39,17 +38,19 @@ Installer / binary under:
 
 ## Export behavior
 
-| Runtime | Output |
-|---------|--------|
-| **Tauri desktop** + ffmpeg | **`.mp4`** (H.264 + AAC) |
-| **Browser** (`npm run dev`) | `.webm` (stable) or native MP4 if browser supports it |
+| Runtime | Success output |
+|---------|----------------|
+| Desktop (`npm run tauri:dev`) | **`.mp4`** — WebCodecs H.264 + AAC; ffmpeg remux if the native helper is used |
+| Browser (`npm run dev`) | **`.mp4`** via the same WebCodecs path, or a **clear error** |
+
+WebM is **not** a success result. If ffmpeg is missing, the desktop helper must fail loudly — never pretend a `.webm` is the export.
 
 ## Commands (Rust)
 
 - `check_ffmpeg` — path to ffmpeg
-- `export_webm_to_mp4` — convert recorded blob file → MP4
+- `export_webm_to_mp4` — remux a temp file → MP4 (helper, not the success story)
 
 ## Notes
 
 - First `tauri:dev` / `tauri:build` compiles Rust (can take several minutes).
-- Without ffmpeg on PATH, desktop export falls back to WebM download with an error toast.
+- Work only in `ResonanceStudio-V4.2`. Never apply desktop updates into a V4.01 folder.

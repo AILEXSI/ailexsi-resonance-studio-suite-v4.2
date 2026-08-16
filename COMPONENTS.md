@@ -1,6 +1,6 @@
-# AILEXSI Resonance Studio — Component Blueprints
+# AILEXSI Resonance Studio Suite V4.2 — Component Blueprints
 
-Standalone modules that will later be integrated into this host application (and the future Tauri build).
+Standalone modules that plug into this host (and the Tauri desktop build).
 
 All modules follow the same principles:
 
@@ -19,7 +19,7 @@ User imports videos + audio
         │
         ▼
 ┌─────────────────────┐
-│  ailexsi-analyser   │  ← scans lanes + sound → AnalysisSnapshot
+│  ailexsi-analyser   │  ← Sensorics: lanes + sound → AnalysisSnapshot
 └─────────┬───────────┘
           │ Snapshot (JSON)
           ▼
@@ -35,7 +35,7 @@ User imports videos + audio
           │
           ▼
 ┌─────────────────────┐
-│  ailexsi-exporter   │  ← renders timeline → MP4
+│  host exporter      │  ← V4.2 milestone: timeline → real H.264/AAC MP4
 └─────────────────────┘
 
 Live visual layer (parallel):
@@ -55,30 +55,30 @@ Supporting native layer:
 
 | Module | Repo | Role |
 |--------|------|------|
-| Analyser | https://github.com/AILEXSI/ailexsi-analyser | Feature extraction (beats, energy, scenes, motion, inventory) |
+| Host (this) | https://github.com/AILEXSI/ailexsi-resonance-studio-suite-v4.2 | Timeline + export + desktop shell |
+| Analyser | https://github.com/AILEXSI/ailexsi-analyser | Feature extraction (beats, energy, scenes, motion) |
 | Regisseur | https://github.com/AILEXSI/ailexsi-regisseur | Creative proposals (new video track + cut points) |
-| Visualz | https://github.com/AILEXSI/ailexsi-visualz | Audio-reactive visualizer engine (from scratch) |
+| Visualz | https://github.com/AILEXSI/ailexsi-visualz | Audio-reactive visualizer engine |
 | Decoder | https://github.com/AILEXSI/ailexsi-decoder | Native media layer for Tauri |
-| Exporter | https://github.com/AILEXSI/ailexsi-exporter | Timeline → MP4 |
+| Exporter (legacy spec) | https://github.com/AILEXSI/ailexsi-exporter | Original contract — **host exporter in this repo is the live path** |
 
 ---
 
-## Current Blueprint Status (2026-08-15)
+## Status (2026-08-16)
 
-- Analyser, Regisseur, Decoder, Exporter, **Visualz** all have complete READMEs + type contracts + SPEC docs
-- Analyser & Regisseur have runnable TypeScript skeletons
-- Visualz has `createVisualEngine` skeleton + scene registry
-- Exporter has `exportTimeline` skeleton
-- Decoder has TypeScript binding stubs ready for Tauri commands
+**Host V4.2.0**
 
-Next implementation work (home / Grok Build App):
+- Exporter in this repo is live: Mediabunny decode → WebCodecs H.264 + AAC MP4
+- Milestone: smooth video + full-strength music
+- Desktop: `npm run tauri:dev`
+- Cut = V, C free, logo Suite V4.2 / 4.2.0
 
-1. Real audio feature extraction (Web Audio first, then Decoder)
-2. Real scene/motion analysis
-3. First 4 Visualz scenes (pulse-orb, spectrum-bars, particle-field, resonance-wave)
-4. Better heuristic + optional LLM path in Regisseur
-5. FFmpeg wiring in Exporter
-6. Tauri + Decoder integration
+**Still external / next**
+
+- Sensorics (Analyser) into the host
+- One AI video track (Regisseur → human accept)
+- Visualz scenes
+- Decoder sidecar beyond the current ffmpeg helper
 
 ---
 

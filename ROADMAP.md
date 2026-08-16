@@ -1,38 +1,32 @@
 # V4.2 Roadmap
 
+**Current version:** 4.2.0  
+**Repo:** https://github.com/AILEXSI/ailexsi-resonance-studio-suite-v4.2
+
 ## Frozen: V4.01
 
 Repo: https://github.com/AILEXSI/ailexsi-resonance-studio  
 Do **not** push feature work there. Read and copy only.
 
-### Already done in V4.01
+Inherited from that baseline: multi-track V1/V2 + A1/A2, Cut = V / C free, WebCodecs + mediabunny, no silent WebM fallthrough, export watchdog, Vite 5.4.21, mediabunny 1.54.0, `@tauri-apps/api` 1.5.6.
 
-- Multi-track V1/V2 + A1/A2
-- Cut = V, C free
-- Suite V4.01 logo
-- WebCodecs + mediabunny H.264 MP4
-- AAC probe + video-only fallback
-- No silent WebM fallthrough
-- Export watchdog
-- Audio from AUDIO tracks else VIDEO sources
-- mediabunny 1.54.0, @tauri-apps/api 1.5.6, Vite 5.4.21
+## Done in V4.2
 
-## P0
+- Branding **Suite V4.2** / **4.2.0** in UI, `package.json`, Tauri product name
+- Nested `src-tauri/src-tauri` removed
+- Desktop scripts: `npm run tauri:dev` / `tauri:build`
+- **MP4 export milestone:** frame-accurate Mediabunny decode → H.264 + AAC, smooth video, full-strength music
+- Still-image paint in the exporter
+- Cancel aborts the WebCodecs encode (`AbortSignal`)
 
-1. Export E2E test — short range, video+audio, `.mp4` with ftyp
-2. Still-image paint in exporter (`type: image`)
-3. Pre-export hydration — no `missing:` / dead blob mid-encode
-4. MediaRecorder never counts as success after WebCodecs fail (prefer remove)
+## Next (host is ready)
 
-## P1
+1. **Sensorics** — real feature extraction (beats, energy, scenes) into the host
+2. **AI video track** — Regisseur proposal → human accept → new VIDEO lane
+3. Stronger pre-export hydration (no `missing:` / dead blob mid-encode)
+4. Optional full removal of the MediaRecorder branch (already isolated: never a success after WebCodecs fail)
+5. Waveform / beats polish
+6. AI command reliability
+7. Overlap / gap edge cases
 
-5. Long-timeline encode performance / cancel UX
-6. Normalize Tauri folder (avoid nested src-tauri/src-tauri)
-7. Branding V4.2 / 4.2.0 everywhere
-
-## P2
-
-8. Overlap / gap edge cases
-9. Waveform / beats polish
-10. AI command reliability
-11. Clean Windows APPLY from this repo only
+Export itself is **not** an open P0 anymore.
