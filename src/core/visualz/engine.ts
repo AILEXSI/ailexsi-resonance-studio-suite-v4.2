@@ -9,8 +9,38 @@ import { builtinScenes } from "./scenes";
 const registry = new Map<string, Scene>();
 for (const s of builtinScenes) registry.set(s.id, s);
 
-export function listVisualizerScenes(): Array<{ id: string; name: string; description?: string }> {
-  return builtinScenes.map((s) => ({ id: s.id, name: s.name, description: s.description }));
+const SHORT_NAMES: Record<string, string> = {
+  "resonance-wave": "Wave",
+  "spectrum-bars": "Bars",
+  "pulse-orb": "Orb",
+  "particle-field": "Dust",
+  "tunnel-spiral": "Tunnel",
+  "lita-bloom": "Bloom",
+};
+
+export function listVisualizerScenes(): Array<{
+  id: string;
+  name: string;
+  short: string;
+  description?: string;
+}> {
+  return builtinScenes.map((s) => ({
+    id: s.id,
+    name: s.name,
+    short: SHORT_NAMES[s.id] || s.name,
+    description: s.description,
+  }));
+}
+
+export function visualizerSceneShortName(id: string | undefined): string {
+  const scene = getVisualizerScene(id);
+  return SHORT_NAMES[scene.id] || scene.name;
+}
+
+export function nextVisualizerSceneId(current: string | undefined): string {
+  const list = builtinScenes;
+  const i = list.findIndex((s) => s.id === (current || DEFAULT_VIZ_SCENE));
+  return list[(i + 1) % list.length]!.id;
 }
 
 export function getVisualizerScene(id: string | undefined): Scene {

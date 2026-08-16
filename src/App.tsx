@@ -17,7 +17,9 @@ import {
   DEFAULT_VIZ_SCENE,
   featuresFromAnalyser,
   listVisualizerScenes,
+  nextVisualizerSceneId,
   renderVisualizerScene,
+  visualizerSceneShortName,
 } from "./core/visualz";
 import { proposeArrangement } from "./core/ai-arrangement";
 import { loadProject, saveProject } from "./core/project-store";
@@ -1688,6 +1690,11 @@ export function App() {
   }, [project]);
 
   const setVisualizerScene = useCallback((sceneId: string) => {
+    try {
+      sessionStorage.setItem("rs.vizSceneId", sceneId);
+    } catch {
+      /* */
+    }
     setProject((p) => ({
       ...p,
       tracks: p.tracks.map((t) =>
@@ -1706,6 +1713,17 @@ export function App() {
       updatedAt: new Date().toISOString(),
     }));
   }, []);
+
+  useEffect(() => {
+    if (!visualizerTrack || visualizerTrack.visualizerSceneId) return;
+    let stored = "";
+    try {
+      stored = sessionStorage.getItem("rs.vizSceneId") || "";
+    } catch {
+      /* */
+    }
+    if (stored) setVisualizerScene(stored);
+  }, [visualizerTrack, setVisualizerScene]);
 
   const proposeArrangementTrack = useCallback(() => {
     const proposal = proposeArrangement(project);
@@ -2299,22 +2317,22 @@ export function App() {
                   </button>
                   {track.role === "ai-visualizer" && (
                     <>
-                      <select
-                        className="viz-scene-select"
-                        title="Visualizer scene"
-                        value={track.visualizerSceneId || DEFAULT_VIZ_SCENE}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
+                      <button
+                        type="button"
+                        className="viz-mode-cycle"
+                        title={`Visualizer mode: ${
+                          listVisualizerScenes().find(
+                            (s) => s.id === (track.visualizerSceneId || DEFAULT_VIZ_SCENE),
+                          )?.name || "Wave"
+                        } — click to cycle`}
+                        onClick={(e) => {
                           e.stopPropagation();
-                          setVisualizerScene(e.target.value);
+                          setVisualizerScene(nextVisualizerSceneId(track.visualizerSceneId));
                         }}
                       >
-                        {listVisualizerScenes().map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </select>
+                        {visualizerSceneShortName(track.visualizerSceneId)}
+                        <span aria-hidden>›</span>
+                      </button>
                       <button
                         type="button"
                         className="track-mix-btn ai"
@@ -2482,7 +2500,7 @@ export function App() {
               {project.tracks.map((track) => (
                 <div
                   key={track.id}
-                  className={`track-lane${track.muted ? " is-muted" : ""}${track.soloed ? " is-solo" : ""}`}
+                  className={`track-lane${track.role ? ` role-${track.role}` : ""}${track.muted ? " is-muted" : ""}${track.soloed ? " is-solo" : ""}`}
                   data-track-id={track.id}
                   onClick={(e) => {
                     setTargetTrackId(track.id);
