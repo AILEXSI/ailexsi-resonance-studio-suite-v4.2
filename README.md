@@ -1,4 +1,4 @@
-# AILEXSI Resonance Studio Suite V4.01
+# AILEXSI Resonance Studio Suite V4.2
 
 Local-first multi-track video/audio editor (NLE).
 
