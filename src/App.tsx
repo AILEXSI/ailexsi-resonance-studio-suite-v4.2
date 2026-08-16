@@ -139,6 +139,7 @@ export function App() {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const vizCanvasRef = useRef<HTMLCanvasElement>(null);
+  const vizClipCanvasRef = useRef<HTMLCanvasElement>(null);
   const audio1Ref = useRef<HTMLAudioElement>(null);
   const audio2Ref = useRef<HTMLAudioElement>(null);
   const rafRef = useRef<number>(0);
@@ -251,8 +252,12 @@ export function App() {
   const visualizerPreviewOn = !!(
     visualizerTrack && isTrackActiveForPreview(project.tracks, visualizerTrack)
   );
+  const visualizerClipAtPlayhead = useMemo(() => {
+    if (!visualizerTrack || !visualizerPreviewOn) return null;
+    return clipAt(visualizerTrack, project.playheadMs);
+  }, [visualizerTrack, visualizerPreviewOn, project.playheadMs]);
 
-  // Topmost content video (arrangement over V1/V2). Visualizer is an overlay, not a replacement.
+  // Topmost content video (arrangement over V1/V2). Visualizer is never an overlay.
   const activeVideoClip = useMemo(() => {
     for (let i = previewVideoStack.length - 1; i >= 0; i--) {
       const c = clipAt(previewVideoStack[i]!, project.playheadMs);
@@ -495,37 +500,47 @@ export function App() {
     return () => cancelAnimationFrame(raf);
   }, [isPlaying, masterVolume, ensureAudioGraph]);
 
+  const visualizerAsMainOutput = !!(
+    visualizerPreviewOn &&
+    visualizerClipAtPlayhead &&
+    !activeVideoAsset
+  );
+
   useEffect(() => {
-    const canvas = vizCanvasRef.current;
-    if (!canvas) return;
-    const parent = canvas.parentElement;
-    if (!parent) return;
-    const resize = () => {
-      const r = parent.getBoundingClientRect();
-      canvas.width = Math.max(2, Math.floor(r.width));
-      canvas.height = Math.max(2, Math.floor(r.height));
-    };
-    resize();
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    if (!visualizerPreviewOn) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      canvas.style.opacity = "0";
-      return;
-    }
-    canvas.style.opacity = "1";
     const beats = collectBeatTimesMs(project);
-    let raf = 0;
-    const tick = () => {
-      resize();
+    const paint = (canvas: HTMLCanvasElement | null, visible: boolean) => {
+      if (!canvas) return;
+      const parent = canvas.parentElement;
+      if (!parent) return;
+      const r = parent.getBoundingClientRect();
+      const w = Math.max(2, Math.floor(r.width));
+      const h = Math.max(2, Math.floor(r.height));
+      if (canvas.width !== w) canvas.width = w;
+      if (canvas.height !== h) canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (!visible) return;
       const energy = visualizerEnergyAt(project.playheadMs, beats, meterLevel);
       drawVisualizerFrame(ctx, canvas.width, canvas.height, project.playheadMs, energy, beats);
+    };
+    let raf = 0;
+    const tick = () => {
+      paint(vizClipCanvasRef.current, visualizerPreviewOn);
+      paint(vizCanvasRef.current, visualizerAsMainOutput);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [visualizerPreviewOn, project.playheadMs, project.durationMs, project.markers, project.mediaAssets, meterLevel]);
+  }, [
+    visualizerPreviewOn,
+    visualizerAsMainOutput,
+    project.playheadMs,
+    project.durationMs,
+    project.markers,
+    project.mediaAssets,
+    meterLevel,
+  ]);
 
   // rAF clock
   useEffect(() => {
@@ -1996,6 +2011,8 @@ export function App() {
                 }}
               />
             </div>
+          ) : visualizerAsMainOutput ? (
+            <canvas ref={vizCanvasRef} className="viz-main" aria-label="Visualizer fallback" />
           ) : (
             <div className="placeholder">
               <div style={{ fontSize: 16, marginBottom: 8 }}>Main Output</div>
@@ -2008,7 +2025,8 @@ export function App() {
               </span>
             </div>
           )}
-          <canvas ref={vizCanvasRef} className="viz-overlay" aria-hidden />
+          {/* video element kept mounted when fallback so play() still works after clip returns */}
+          {!activeVideoAsset && <video ref={videoRef} hidden playsInline />}
           {/* Dual audio elements for A1 / A2 */}
           <audio
             ref={audio1Ref}
@@ -2216,7 +2234,9 @@ export function App() {
                   <button
                     type="button"
                     className={`track-mix-btn mute${track.muted ? " on" : ""}`}
-                    title="Mute — hidden in preview and export"
+                    title="Mute"
+                    aria-label="Mute"
+                    aria-pressed={!!track.muted}
                     onClick={(e) => {
                       e.stopPropagation();
                       toggleMute(track.id);
@@ -2227,7 +2247,9 @@ export function App() {
                   <button
                     type="button"
                     className={`track-mix-btn solo${track.soloed ? " on" : ""}`}
-                    title="Solo — preview only this kind"
+                    title="Solo"
+                    aria-label="Solo"
+                    aria-pressed={!!track.soloed}
                     onClick={(e) => {
                       e.stopPropagation();
                       toggleSolo(track.id);
@@ -2440,6 +2462,13 @@ export function App() {
                           setTargetTrackId(track.id);
                         }}
                       >
+                        {track.role === "ai-visualizer" && (
+                          <canvas
+                            ref={vizClipCanvasRef}
+                            className="clip-viz-canvas"
+                            aria-hidden
+                          />
+                        )}
                         {track.kind === "AUDIO" && (() => {
                           const asset = project.mediaAssets.find((a) => a.id === clip.mediaAssetId);
                           const peaks = asset?.analysis?.waveformPeaks;

@@ -39,8 +39,12 @@ export interface ExportJob {
     tracks: ExportTrack[];
   };
   options: RenderOptions;
-  /** Live overlay when the AI Visualizer track is not muted. */
-  visualizer?: { enabled: boolean; beatsMs: number[] };
+  /** Fallback picture only when no content video is on the frame. */
+  visualizer?: {
+    enabled: boolean;
+    beatsMs: number[];
+    spans?: Array<{ startMs: number; endMs: number }>;
+  };
 }
 
 export interface ExportProgress {

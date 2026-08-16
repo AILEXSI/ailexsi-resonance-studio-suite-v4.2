@@ -89,11 +89,17 @@ export function jobFromProject(
       videoBitrate: "8M",
       audioBitrate: "192k",
     },
-    visualizer: {
-      enabled: project.tracks.some(
-        (t) => t.role === "ai-visualizer" && !t.muted && t.clips.length > 0,
-      ),
-      beatsMs: opts?.beatsMs ?? [],
-    },
+    visualizer: (() => {
+      const viz = project.tracks.find((t) => t.role === "ai-visualizer");
+      const spans = (viz?.clips ?? []).map((c) => ({
+        startMs: Math.max(0, c.range.startMs - start),
+        endMs: Math.max(0, c.range.endMs - start),
+      }));
+      return {
+        enabled: !!(viz && !viz.muted && spans.length),
+        beatsMs: opts?.beatsMs ?? [],
+        spans,
+      };
+    })(),
   };
 }
